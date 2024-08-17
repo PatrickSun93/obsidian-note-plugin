@@ -1,134 +1,169 @@
-import { App, Editor, MarkdownView, Modal, Notice, Plugin, PluginSettingTab, Setting } from 'obsidian';
+import { Plugin, Setting, PluginSettingTab } from 'obsidian';
+import moment from 'moment';
 
-// Remember to rename these classes and interfaces!
+export default class MyNotesPlugin extends Plugin {
+  async onload() {
+    console.log('Loading MyNotesPlugin...');
 
-interface MyPluginSettings {
-	mySetting: string;
+    // Load settings
+    await this.loadSettings();
+
+    // Add settings tab
+    this.addSettingTab(new MyNotesSettingTab(this.app, this));
+
+    // Create daily/weekly note if not exists and open them
+    await this.createAndOpenNotes();
+
+    // Add a random emoji to the title based on the custom list
+    this.addRandomEmojiToTitle();
+  }
+
+  async loadSettings() {
+    this.settings = Object.assign({}, DEFAULT_SETTINGS, await this.loadData());
+  }
+
+  async saveSettings() {
+    await this.saveData(this.settings);
+  }
+
+  async createAndOpenNotes() {
+    const { dailyNoteFormat, weeklyNoteFormat, dailyNoteLocation, weeklyNoteLocation } = this.settings;
+
+    // Get the current date and week number
+    const today = moment().format(dailyNoteFormat);
+    const weekNumber = moment().isoWeek(); // ISO week number (1-53)
+    const currentYear = moment().year();
+
+    // Construct the paths for daily and weekly notes
+    const dailyNotePath = dailyNoteLocation ? `${dailyNoteLocation}/${today}.md` : `${today}.md`;
+    const weeklyNotePath = weeklyNoteLocation ? `${weeklyNoteLocation}/Week-${weekNumber}-${currentYear}.md` : `Week-${weekNumber}-${currentYear}.md`;
+
+    // Check if the daily note exists and create it if not
+    let dailyNote = this.app.vault.getAbstractFileByPath(dailyNotePath);
+    if (!dailyNote) {
+      dailyNote = await this.app.vault.create(dailyNotePath, this.getDailyNoteTemplate(today));
+      console.log(`Daily note created: ${dailyNotePath}`);
+    }
+
+    // Check if the weekly note exists and create it if not
+    let weeklyNote = this.app.vault.getAbstractFileByPath(weeklyNotePath);
+    if (!weeklyNote) {
+      weeklyNote = await this.app.vault.create(weeklyNotePath, this.getWeeklyNoteTemplate(weekNumber, currentYear));
+      console.log(`Weekly note created: ${weeklyNotePath}`);
+    }
+
+    // Open the daily note
+    await this.openNoteInActiveLeaf(dailyNotePath);
+
+    // Open the weekly note
+    await this.openNoteInActiveLeaf(weeklyNotePath);
+  }
+
+  async openNoteInActiveLeaf(notePath) {
+    const file = this.app.vault.getAbstractFileByPath(notePath);
+    if (file) {
+      const leaf = this.app.workspace.getLeaf(true);
+      await leaf.openFile(file);
+    } else {
+      console.error(`File not found: ${notePath}`);
+    }
+  }
+
+  addRandomEmojiToTitle() {
+    const { emojis } = this.settings;
+    const randomEmoji = emojis[Math.floor(Math.random() * emojis.length)];
+
+    // Logic to add emoji to the note title (to be implemented)
+  }
+
+  getDailyNoteTemplate(date) {
+    return `# ${date}\n\n## Reading Notes\n- \n\n## Thoughts\n- `;
+  }
+
+  getWeeklyNoteTemplate(weekNumber, year) {
+    return `# Week ${weekNumber}, ${year}\n\n## Summary\n- \n\n## Achievements\n- \n\n## Next Week's Goals\n- `;
+  }
+
+  onunload() {
+    console.log('Unloading MyNotesPlugin...');
+  }
 }
 
-const DEFAULT_SETTINGS: MyPluginSettings = {
-	mySetting: 'default'
-}
+const DEFAULT_SETTINGS = {
+  dailyNoteFormat: 'YYYY-MM-DD',
+  weeklyNoteFormat: 'Week #',
+  dailyNoteLocation: '',
+  weeklyNoteLocation: '',
+  weekStart: 'Monday',
+  emojis: ['😊', '📚', '✍️', '🚀', '🌟', '🎯'], // Customizable emojis
+};
 
-export default class MyPlugin extends Plugin {
-	settings: MyPluginSettings;
+class MyNotesSettingTab extends PluginSettingTab {
+  constructor(app, plugin) {
+    super(app, plugin);
+    this.plugin = plugin;
+  }
 
-	async onload() {
-		await this.loadSettings();
+  display() {
+    const { containerEl } = this;
 
-		// This creates an icon in the left ribbon.
-		const ribbonIconEl = this.addRibbonIcon('dice', 'Sample Plugin', (evt: MouseEvent) => {
-			// Called when the user clicks the icon.
-			new Notice('This is a notice!');
-		});
-		// Perform additional things with the ribbon
-		ribbonIconEl.addClass('my-plugin-ribbon-class');
+    containerEl.empty();
 
-		// This adds a status bar item to the bottom of the app. Does not work on mobile apps.
-		const statusBarItemEl = this.addStatusBarItem();
-		statusBarItemEl.setText('Status Bar Text');
+    containerEl.createEl('h2', { text: 'Settings for My Notes Plugin' });
 
-		// This adds a simple command that can be triggered anywhere
-		this.addCommand({
-			id: 'open-sample-modal-simple',
-			name: 'Open sample modal (simple)',
-			callback: () => {
-				new SampleModal(this.app).open();
-			}
-		});
-		// This adds an editor command that can perform some operation on the current editor instance
-		this.addCommand({
-			id: 'sample-editor-command',
-			name: 'Sample editor command',
-			editorCallback: (editor: Editor, view: MarkdownView) => {
-				console.log(editor.getSelection());
-				editor.replaceSelection('Sample Editor Command');
-			}
-		});
-		// This adds a complex command that can check whether the current state of the app allows execution of the command
-		this.addCommand({
-			id: 'open-sample-modal-complex',
-			name: 'Open sample modal (complex)',
-			checkCallback: (checking: boolean) => {
-				// Conditions to check
-				const markdownView = this.app.workspace.getActiveViewOfType(MarkdownView);
-				if (markdownView) {
-					// If checking is true, we're simply "checking" if the command can be run.
-					// If checking is false, then we want to actually perform the operation.
-					if (!checking) {
-						new SampleModal(this.app).open();
-					}
+    new Setting(containerEl)
+      .setName('Daily Note Format')
+      .setDesc('Set the format for daily note titles.')
+      .addText(text => text
+        .setPlaceholder('YYYY-MM-DD')
+        .setValue(this.plugin.settings.dailyNoteFormat)
+        .onChange(async (value) => {
+          this.plugin.settings.dailyNoteFormat = value;
+          await this.plugin.saveSettings();
+        }));
 
-					// This command will only show up in Command Palette when the check function returns true
-					return true;
-				}
-			}
-		});
+    new Setting(containerEl)
+      .setName('Weekly Note Format')
+      .setDesc('Set the format for weekly note titles.')
+      .addText(text => text
+        .setPlaceholder('Week #')
+        .setValue(this.plugin.settings.weeklyNoteFormat)
+        .onChange(async (value) => {
+          this.plugin.settings.weeklyNoteFormat = value;
+          await this.plugin.saveSettings();
+        }));
 
-		// This adds a settings tab so the user can configure various aspects of the plugin
-		this.addSettingTab(new SampleSettingTab(this.app, this));
+    new Setting(containerEl)
+      .setName('Daily Note Location')
+      .setDesc('Folder location for daily notes.')
+      .addText(text => text
+        .setPlaceholder('Folder path')
+        .setValue(this.plugin.settings.dailyNoteLocation)
+        .onChange(async (value) => {
+          this.plugin.settings.dailyNoteLocation = value;
+          await this.plugin.saveSettings();
+        }));
 
-		// If the plugin hooks up any global DOM events (on parts of the app that doesn't belong to this plugin)
-		// Using this function will automatically remove the event listener when this plugin is disabled.
-		this.registerDomEvent(document, 'click', (evt: MouseEvent) => {
-			console.log('click', evt);
-		});
+    new Setting(containerEl)
+      .setName('Weekly Note Location')
+      .setDesc('Folder location for weekly notes.')
+      .addText(text => text
+        .setPlaceholder('Folder path')
+        .setValue(this.plugin.settings.weeklyNoteLocation)
+        .onChange(async (value) => {
+          this.plugin.settings.weeklyNoteLocation = value;
+          await this.plugin.saveSettings();
+        }));
 
-		// When registering intervals, this function will automatically clear the interval when the plugin is disabled.
-		this.registerInterval(window.setInterval(() => console.log('setInterval'), 5 * 60 * 1000));
-	}
-
-	onunload() {
-
-	}
-
-	async loadSettings() {
-		this.settings = Object.assign({}, DEFAULT_SETTINGS, await this.loadData());
-	}
-
-	async saveSettings() {
-		await this.saveData(this.settings);
-	}
-}
-
-class SampleModal extends Modal {
-	constructor(app: App) {
-		super(app);
-	}
-
-	onOpen() {
-		const {contentEl} = this;
-		contentEl.setText('Woah!');
-	}
-
-	onClose() {
-		const {contentEl} = this;
-		contentEl.empty();
-	}
-}
-
-class SampleSettingTab extends PluginSettingTab {
-	plugin: MyPlugin;
-
-	constructor(app: App, plugin: MyPlugin) {
-		super(app, plugin);
-		this.plugin = plugin;
-	}
-
-	display(): void {
-		const {containerEl} = this;
-
-		containerEl.empty();
-
-		new Setting(containerEl)
-			.setName('Setting #1')
-			.setDesc('It\'s a secret')
-			.addText(text => text
-				.setPlaceholder('Enter your secret')
-				.setValue(this.plugin.settings.mySetting)
-				.onChange(async (value) => {
-					this.plugin.settings.mySetting = value;
-					await this.plugin.saveSettings();
-				}));
-	}
+    new Setting(containerEl)
+      .setName('Custom Emojis')
+      .setDesc('Set custom emojis to randomly add to the file titles.')
+      .addTextArea(textArea => textArea
+        .setPlaceholder('😊, 📚, ✍️, 🚀, 🌟, 🎯')
+        .setValue(this.plugin.settings.emojis.join(', '))
+        .onChange(async (value) => {
+          this.plugin.settings.emojis = value.split(',').map(emoji => emoji.trim());
+          await this.plugin.saveSettings();
+        }));
+  }
 }
