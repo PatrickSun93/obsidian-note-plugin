@@ -4,8 +4,8 @@
 	"version": "1.0.0",
 	"minAppVersion": "0.15.0",
 	"description": "Daily/Weekly Notes",
-	"author": "Psun",
-	"authorUrl": "",
+	"author": "Patrick Sun",
+	"authorUrl": "https://github.com/PatrickSun93/obsidian-note-plugin/",
 	"fundingUrl": "",
 	"isDesktopOnly": false
 }
